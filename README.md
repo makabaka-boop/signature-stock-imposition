@@ -9,12 +9,36 @@
 
 ## 参数
 
+### 固定容量入口（旧入口，行为不变）
+
 | 参数 | 规则 |
 | --- | --- |
 | 正文页数 bodyPages | 1–512 的整数 |
 | signatureSize | 4–32 且为 4 的倍数 |
 | 装订方向 | 左订 / 右订 |
 | 翻纸方式 | 长边翻转 / 短边翻转 |
+
+### 库存拼版入口
+
+装订车间临时只剩零散签帖时使用：
+
+| 参数 | 规则 |
+| --- | --- |
+| 正文页数 bodyPages | 1–512 的整数 |
+| 库存签帖 | 2～4 种，容量互不相同、4–32 且为 4 的倍数 |
+| 各容量可用册数 | 0～8 的整数（0 册允许，仅表示该种暂时不可用） |
+| 装订方向 / 翻纸方式 | 同固定入口 |
+
+每本书按签帖顺序连续装页：**前面签帖必须装满，仅最后一帖可补 `BLANK`**
+（末帖至少装 1 个正文页，不允许空帖）。容量序列按以下顺序取最优：
+
+1. 总补白页最少；
+2. 使用签帖数最少；
+3. 容量序列字典序最小。
+
+库存不足（无任何可行序列）时返回 **`NO_IMPOSITION`**，不生成部分纸张，
+界面保留上次合法拼版。库存条目本身非法（容量重复/越界、册数越界等）同样
+保留上次合法拼版。
 
 非法参数组合不会覆盖上次合法拼版（界面保留旧结果并报错）。
 
@@ -33,7 +57,8 @@
 3. **短边翻转**：再只对**背面**交换左右槽位（长边背面不变）。
 
 表格、可翻面卡片、页码反查与下载 JSON 共用同一个 `Imposition` 映射，
-导出时不另写公式。
+导出时不另写公式；库存拼版逐帖复用同一套槽位映射，各帖容量来自选中的
+容量序列，全局纸张编号（`sheetIndex`）跨签帖连续。
 
 ## 本地开发
 
@@ -73,5 +98,34 @@ docker compose up --build -d
   ],
   "locations": [{ "page": 1, "signature": 1, "sheetIndex": 1,
                   "sheetInSignature": 1, "face": "front", "slot": "frontRight" }]
+}
+```
+
+库存拼版导出额外带 `mode: "inventory"`、`signatureSizes`、`usedSignatures`，
+每张纸带所属帖容量 `signatureSize`；固定容量入口的导出结构保持不变。
+10 页 / 库存 `{4×2, 8×2}`（选中序列 `[4, 8]`）示例：
+
+```json
+{
+  "mode": "inventory",
+  "bodyPages": 10,
+  "binding": "left",
+  "flip": "long",
+  "signatureCount": 2,
+  "sheetCount": 3,
+  "blankCount": 2,
+  "signatureSizes": [4, 8],
+  "usedSignatures": [{ "size": 4, "used": 1 }, { "size": 8, "used": 1 }],
+  "sheets": [
+    { "sheetIndex": 1, "signature": 1, "sheetInSignature": 1,
+      "signatureSize": 4,
+      "frontLeft": 4, "frontRight": 1, "backLeft": 2, "backRight": 3 },
+    { "sheetIndex": 2, "signature": 2, "sheetInSignature": 1,
+      "signatureSize": 8,
+      "frontLeft": "BLANK", "frontRight": 5, "backLeft": 6, "backRight": "BLANK" },
+    { "sheetIndex": 3, "signature": 2, "sheetInSignature": 2,
+      "signatureSize": 8,
+      "frontLeft": 10, "frontRight": 7, "backLeft": 8, "backRight": 9 }
+  ]
 }
 ```

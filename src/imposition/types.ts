@@ -12,6 +12,15 @@ export type Slot = 'frontLeft' | 'frontRight' | 'backLeft' | 'backRight';
 /** 槽位所属纸面。 */
 export type Face = 'front' | 'back';
 
+/** 拼版入口：固定容量旧入口，或按库存容量拼版。 */
+export type ImpositionMode = 'fixed' | 'inventory';
+
+/** 一种库存签帖：容量（4–32 的 4 的倍数）及可用册数（0–8）。 */
+export interface InventoryItem {
+  size: number;
+  count: number;
+}
+
 export const SLOTS: readonly Slot[] = [
   'frontLeft',
   'frontRight',
@@ -35,6 +44,8 @@ export interface Sheet {
   sheetIndex: number;
   /** 所属签帖序号，从 1 起。 */
   signature: number;
+  /** 该签帖的容量（库存拼版时各帖可以不同）。 */
+  signatureSize: number;
   /** 签帖内纸张序号，从 1 起（帖内最外层）。 */
   sheetInSignature: number;
   frontLeft: PageCell;
@@ -55,10 +66,21 @@ export interface PageLocation {
   slot: Slot;
 }
 
-/** 一次合法拼版的完整结果。表格、反查、卡片预览与 JSON 导出共用此结构。 */
-export interface Imposition {
+/** 库存拼版选中的一种签帖：容量及实际使用册数。 */
+export interface UsedSignature {
+  size: number;
+  used: number;
+}
+
+/**
+ * 一次合法拼版的完整结果。表格、反查、卡片预览与 JSON 导出共用此结构。
+ * fixed 为固定容量旧入口（结构与旧版逐字段一致）；
+ * inventory 为库存拼版，记录选中的容量序列与库存消耗。
+ */
+export type Imposition = FixedImposition | InventoryImposition;
+
+interface BaseImposition {
   bodyPages: number;
-  signatureSize: number;
   binding: Binding;
   flip: Flip;
   /** 签帖总数。 */
@@ -73,10 +95,33 @@ export interface Imposition {
   locations: Record<number, PageLocation>;
 }
 
-/** 拼版输入参数。 */
+/** 固定容量旧入口结果（固定容量旧入口及四种翻转模式结果不变）。 */
+export interface FixedImposition extends BaseImposition {
+  mode: 'fixed';
+  signatureSize: number;
+}
+
+/** 库存拼版结果。 */
+export interface InventoryImposition extends BaseImposition {
+  mode: 'inventory';
+  /** 按签帖顺序排列的各帖容量（仅最后一帖可补白）。 */
+  signatureSizes: number[];
+  /** 每种容量实际消耗的库存册数（只列 used > 0，按容量升序）。 */
+  usedSignatures: UsedSignature[];
+}
+
+/** 固定容量拼版输入参数。 */
 export interface ImpositionInput {
   bodyPages: number;
   signatureSize: number;
+  binding: Binding;
+  flip: Flip;
+}
+
+/** 库存拼版输入参数。 */
+export interface InventoryImpositionInput {
+  bodyPages: number;
+  inventory: InventoryItem[];
   binding: Binding;
   flip: Flip;
 }

@@ -11,10 +11,12 @@ function CellValue({ cell }: { cell: PageCell }) {
 
 function SheetRow({
   sheet,
+  showCapacity,
   active,
   onSelect,
 }: {
   sheet: Sheet;
+  showCapacity: boolean;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -26,6 +28,7 @@ function SheetRow({
     >
       <td>{sheet.sheetIndex}</td>
       <td>{sheet.signature}</td>
+      {showCapacity && <td>{sheet.signatureSize}</td>}
       <td>{sheet.sheetInSignature}</td>
       <td><CellValue cell={sheet.frontLeft} /></td>
       <td><CellValue cell={sheet.frontRight} /></td>
@@ -37,11 +40,13 @@ function SheetRow({
 
 /**
  * 实体纸张顺序表 + 可翻面卡片预览。
- * 表格与卡片渲染的是同一个 Imposition 映射，不做二次计算。
+ * 表格与卡片渲染的是同一个 Imposition 映射，不做二次计算；
+ * 全局纸张编号（纸张#）统一取自 sheet.sheetIndex。
  */
 export default function SheetTable({ imposition }: { imposition: Imposition }) {
   const [selected, setSelected] = useState(0);
   const sheet = imposition.sheets[selected] ?? imposition.sheets[0];
+  const showCapacity = imposition.mode === 'inventory';
 
   return (
     <section className="panel">
@@ -53,6 +58,7 @@ export default function SheetTable({ imposition }: { imposition: Imposition }) {
               <tr>
                 <th>纸张#</th>
                 <th>签帖</th>
+                {showCapacity && <th>帖容量</th>}
                 <th>帖内张</th>
                 <th>正面左</th>
                 <th>正面右</th>
@@ -65,6 +71,7 @@ export default function SheetTable({ imposition }: { imposition: Imposition }) {
                 <SheetRow
                   key={s.sheetIndex}
                   sheet={s}
+                  showCapacity={showCapacity}
                   active={i === selected}
                   onSelect={() => setSelected(i)}
                 />
@@ -75,7 +82,8 @@ export default function SheetTable({ imposition }: { imposition: Imposition }) {
         {sheet && (
           <div className="card-wrap">
             <h3>
-              卡片预览：第 {sheet.sheetIndex} 张（签帖 {sheet.signature} 第{' '}
+              卡片预览：第 {sheet.sheetIndex} 张（签帖 {sheet.signature}
+              {showCapacity ? `（容量 ${sheet.signatureSize}）` : ''} 第{' '}
               {sheet.sheetInSignature} 张）
             </h3>
             <SheetCard sheet={sheet} flipMode={imposition.flip} />

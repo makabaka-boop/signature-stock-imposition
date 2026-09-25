@@ -101,6 +101,42 @@ header h1 {
   color: var(--ink);
 }
 
+.controls fieldset.inventory-fieldset {
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inventory-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.inventory-row {
+  display: flex;
+  gap: 10px;
+}
+
+.inventory-row label {
+  flex-direction: column !important;
+  font-size: 12px !important;
+  color: var(--muted) !important;
+}
+
+.inventory-row input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.inventory-row-count {
+  display: flex;
+  gap: 12px;
+}
+
 button {
   padding: 8px 16px;
   border: 1px solid var(--line);

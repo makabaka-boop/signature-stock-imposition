@@ -2,20 +2,33 @@ import { describe, expect, it } from 'vitest';
 import {
   commitParams,
   createInitialResult,
-  DEFAULT_DRAFT,
   resultReducer,
   type Draft,
+  type FixedDraft,
 } from './state';
 
-const draft = (patch: Partial<Draft>): Draft => ({ ...DEFAULT_DRAFT, ...patch });
+const fixedDraft = (patch: Partial<FixedDraft>): FixedDraft => ({
+  mode: 'fixed',
+  bodyPages: '8',
+  signatureSize: '8',
+  binding: 'left',
+  flip: 'long',
+  ...patch,
+});
+
+// 兼容旧用法：固定模式草稿。
+const draft = (patch: Partial<FixedDraft>): Draft => fixedDraft(patch);
 
 describe('commitParams', () => {
   it('合法草稿生成拼版', () => {
-    const outcome = commitParams(draft({ bodyPages: '12', signatureSize: '8' }));
+    const outcome = commitParams(fixedDraft({ bodyPages: '12', signatureSize: '8' }));
     expect(outcome.ok).toBe(true);
     if (outcome.ok) {
       expect(outcome.imposition.bodyPages).toBe(12);
-      expect(outcome.imposition.signatureSize).toBe(8);
+      expect(outcome.imposition.mode).toBe('fixed');
+      if (outcome.imposition.mode === 'fixed') {
+        expect(outcome.imposition.signatureSize).toBe(8);
+      }
     }
   });
 
@@ -34,6 +47,7 @@ describe('commitParams', () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.errors.length).toBeGreaterThan(0);
+      expect(outcome.noImposition).toBe(false);
     }
   });
 });
@@ -47,13 +61,15 @@ describe('resultReducer：非法组合不得覆盖上次合法拼版', () => {
     const rejected = resultReducer(initial, {
       type: 'rejected',
       errors: ['正文页数必须是 1 至 512 的整数'],
+      noImposition: false,
     });
     expect(rejected.imposition).toBe(initial.imposition);
     expect(rejected.errors).toHaveLength(1);
     expect(rejected.stale).toBe(true);
+    expect(rejected.noImposition).toBe(false);
 
     // 合法提交：替换拼版并清空错误
-    const next = commitParams(draft({ bodyPages: '16' }));
+    const next = commitParams(fixedDraft({ bodyPages: '16' }));
     if (!next.ok) throw new Error('应当合法');
     const committed = resultReducer(rejected, {
       type: 'committed',
@@ -67,9 +83,25 @@ describe('resultReducer：非法组合不得覆盖上次合法拼版', () => {
   it('连续多次非法提交后仍是同一份合法拼版', () => {
     let state = createInitialResult();
     for (let i = 0; i < 5; i += 1) {
-      state = resultReducer(state, { type: 'rejected', errors: [`错误 ${i}`] });
+      state = resultReducer(state, {
+        type: 'rejected',
+        errors: [`错误 ${i}`],
+        noImposition: false,
+      });
     }
     expect(state.imposition.bodyPages).toBe(8);
     expect(state.errors).toEqual(['错误 4']);
+  });
+
+  it('NO_IMPOSITION 的 rejected 同样保留上次合法拼版并打标记', () => {
+    const initial = createInitialResult();
+    const rejected = resultReducer(initial, {
+      type: 'rejected',
+      errors: ['库存签帖无法完成本书：NO_IMPOSITION'],
+      noImposition: true,
+    });
+    expect(rejected.imposition).toBe(initial.imposition);
+    expect(rejected.noImposition).toBe(true);
+    expect(rejected.stale).toBe(true);
   });
 });

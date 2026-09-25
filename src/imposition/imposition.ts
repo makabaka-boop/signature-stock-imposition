@@ -4,13 +4,21 @@ import {
   pageCell,
   type Binding,
   type Face,
+  type FixedImposition,
+  type Flip,
   type Imposition,
   type ImpositionInput,
+  type InventoryImposition,
+  type InventoryImpositionInput,
   type PageCell,
   type PageLocation,
   type Sheet,
   type Slot,
 } from './types';
+import {
+  planInventorySignatures,
+  validateInventoryInput,
+} from './inventory';
 
 /**
  * 参数校验：
@@ -122,23 +130,40 @@ function applyBindingAndFlip(
   }
 }
 
-/** 生成一次完整拼版。输入非法时抛 ImpositionError，绝不返回半成品。 */
-export function impose(input: ImpositionInput): Imposition {
-  validateInput(input);
-  const { bodyPages, signatureSize, binding, flip } = input;
-
-  const sheetsPerSignature = signatureSize / 4;
-  const signatureCount = Math.ceil(bodyPages / signatureSize);
-
+/**
+ * 按给定的各签帖容量序列复用同一套物理槽位映射生成拼版：
+ * 逐帖调用 baselineSheetCells + applyBindingAndFlip，全局纸张编号连续递增。
+ * 前面签帖必须装满；仅最后一帖可在尾部补 BLANK（由规划器保证，这里只按
+ * “本地页 > 帖内实有页数”判 BLANK）。库存拼版与固定容量入口共用此函数，
+ * 表格、页码反查、翻面卡片、JSON 导出都指向这里生成的同一全局纸张编号。
+ */
+function buildImposition(params: {
+  bodyPages: number;
+  signatureSizes: number[];
+  binding: Binding;
+  flip: Flip;
+}): {
+  sheets: Sheet[];
+  locations: Record<number, PageLocation>;
+  blankCount: number;
+} {
+  const { bodyPages, signatureSizes, binding, flip } = params;
   const sheets: Sheet[] = [];
   const locations: Record<number, PageLocation> = {};
   let blankCount = 0;
   let globalSheetIndex = 0;
+  let pageCursor = 0; // 已装入前面签帖的正文页数
 
-  for (let sig = 1; sig <= signatureCount; sig += 1) {
-    const firstPage = (sig - 1) * signatureSize + 1;
-    const lastPage = Math.min(sig * signatureSize, bodyPages);
-    const pagesInSignature = lastPage - firstPage + 1;
+  signatureSizes.forEach((signatureSize, sigIndex) => {
+    const sig = sigIndex + 1;
+    const sheetsPerSignature = signatureSize / 4;
+    const firstPage = pageCursor + 1;
+    // 前面签帖必须装满（本地页 1..size 全部是正文页）；仅最后一帖可只装部分，
+    // 剩余槽位补 BLANK。规划器保证非末帖 size ≤ 剩余页数。
+    const pagesInSignature =
+      sig === signatureSizes.length
+        ? bodyPages - pageCursor
+        : signatureSize;
     // 每个签帖独立补 BLANK 到满帖；本地页号大于 pagesInSignature 的槽位
     // 在下面 toGlobal 中统一判为 BLANK。
 
@@ -166,6 +191,7 @@ export function impose(input: ImpositionInput): Imposition {
       const sheet: Sheet = {
         sheetIndex: globalSheetIndex,
         signature: sig,
+        signatureSize,
         sheetInSignature: k + 1,
         frontLeft: toGlobal(cells.frontLeft),
         frontRight: toGlobal(cells.frontRight),
@@ -191,9 +217,34 @@ export function impose(input: ImpositionInput): Imposition {
 
       sheets.push(sheet);
     }
-  }
+
+    // 无论末帖是否补白，下一帖的首页都紧跟本帖满帖容量之后
+    //（补白占据的是本帖自己的槽位，不占用后续正文页码）。
+    pageCursor += signatureSize;
+  });
+
+  return { sheets, locations, blankCount };
+}
+
+/** 固定容量入口：生成一次完整拼版。输入非法时抛 ImpositionError，绝不返回半成品。 */
+export function impose(input: ImpositionInput): FixedImposition {
+  validateInput(input);
+  const { bodyPages, signatureSize, binding, flip } = input;
+
+  const signatureCount = Math.ceil(bodyPages / signatureSize);
+  const signatureSizes = Array.from(
+    { length: signatureCount },
+    () => signatureSize,
+  );
+  const { sheets, locations, blankCount } = buildImposition({
+    bodyPages,
+    signatureSizes,
+    binding,
+    flip,
+  });
 
   return {
+    mode: 'fixed',
     bodyPages,
     signatureSize,
     binding,
@@ -203,6 +254,43 @@ export function impose(input: ImpositionInput): Imposition {
     blankCount,
     sheets,
     locations,
+  };
+}
+
+/**
+ * 库存拼版入口：先校验库存参数，再按
+ * “最小补白 → 最少签帖 → 容量序列字典序最小”选出容量序列，
+ * 随后与固定入口复用同一套物理槽位映射。
+ * - 库存参数非法：抛 ImpositionError，调用方保留上次合法拼版；
+ * - 库存不足（无可行序列）：抛 NoImpositionError（code = NO_IMPOSITION），
+ *   不生成部分纸张。
+ */
+export function imposeInventory(
+  input: InventoryImpositionInput,
+): InventoryImposition {
+  validateInventoryInput(input);
+  const { bodyPages, inventory, binding, flip } = input;
+
+  const plan = planInventorySignatures(bodyPages, inventory);
+  const { sheets, locations, blankCount } = buildImposition({
+    bodyPages,
+    signatureSizes: plan.sizes,
+    binding,
+    flip,
+  });
+
+  return {
+    mode: 'inventory',
+    bodyPages,
+    binding,
+    flip,
+    signatureCount: plan.sizes.length,
+    sheetCount: sheets.length,
+    blankCount,
+    sheets,
+    locations,
+    signatureSizes: plan.sizes,
+    usedSignatures: plan.usedSignatures,
   };
 }
 
@@ -221,28 +309,53 @@ export function cellToJson(cell: PageCell): number | 'BLANK' {
 
 /**
  * 导出用纯数据（可直接 JSON.stringify）。
- * 表格/反查/下载走的是同一个 Imposition 映射，这里只做可序列化整形。
+ * 表格/反查/下载走的是同一个 Imposition 映射，这里只做可序列化整形，
+ * 全局纸张编号一律取自 Sheet.sheetIndex，导出时不另行计算。
  */
 export function impositionToJson(result: Imposition) {
+  const sheets = result.sheets.map((sheet) => ({
+    sheetIndex: sheet.sheetIndex,
+    signature: sheet.signature,
+    sheetInSignature: sheet.sheetInSignature,
+    frontLeft: cellToJson(sheet.frontLeft),
+    frontRight: cellToJson(sheet.frontRight),
+    backLeft: cellToJson(sheet.backLeft),
+    backRight: cellToJson(sheet.backRight),
+    ...(result.mode === 'inventory'
+      ? { signatureSize: sheet.signatureSize }
+      : {}),
+  }));
+
+  const locations = Object.values(result.locations).sort(
+    (a, b) => a.page - b.page,
+  );
+
+  if (result.mode === 'fixed') {
+    // 固定容量旧入口导出结构保持不变。
+    return {
+      bodyPages: result.bodyPages,
+      signatureSize: result.signatureSize,
+      binding: result.binding,
+      flip: result.flip,
+      signatureCount: result.signatureCount,
+      sheetCount: result.sheetCount,
+      blankCount: result.blankCount,
+      sheets,
+      locations,
+    };
+  }
+
   return {
+    mode: 'inventory',
     bodyPages: result.bodyPages,
-    signatureSize: result.signatureSize,
     binding: result.binding,
     flip: result.flip,
     signatureCount: result.signatureCount,
     sheetCount: result.sheetCount,
     blankCount: result.blankCount,
-    sheets: result.sheets.map((sheet) => ({
-      sheetIndex: sheet.sheetIndex,
-      signature: sheet.signature,
-      sheetInSignature: sheet.sheetInSignature,
-      frontLeft: cellToJson(sheet.frontLeft),
-      frontRight: cellToJson(sheet.frontRight),
-      backLeft: cellToJson(sheet.backLeft),
-      backRight: cellToJson(sheet.backRight),
-    })),
-    locations: Object.values(result.locations).sort(
-      (a, b) => a.page - b.page,
-    ),
+    signatureSizes: result.signatureSizes,
+    usedSignatures: result.usedSignatures,
+    sheets,
+    locations,
   };
 }
