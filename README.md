@@ -12,11 +12,29 @@
 | 参数 | 规则 |
 | --- | --- |
 | 正文页数 bodyPages | 1–512 的整数 |
-| signatureSize | 4–32 且为 4 的倍数 |
+| signatureSize | 4–32 且为 4 的倍数（固定容量流程） |
 | 装订方向 | 左订 / 右订 |
 | 翻纸方式 | 长边翻转 / 短边翻转 |
 
 非法参数组合不会覆盖上次合法拼版（界面保留旧结果并报错）。
+
+## 库存拼版流程
+
+装订车间临时只剩不同容量的签帖时，切换到「库存拼版」：输入正文页数、
+装订/翻纸方式，以及 **2–4 种**互不相同的签帖容量（4–32 且为 4 的倍数）
+和各自 **0–8** 的可用册数。每本书按签帖顺序连续装页：除最后一帖可补
+`BLANK` 外，前面的签帖必须装满。
+
+规划目标依次是：
+
+1. **最小化总补白页**（= 选定容量之和 − 正文页数）；
+2. **最小化使用签帖数**（容量序列长度）；
+3. 取**容量序列字典序最小**者（升序排列即字典序最小）。
+
+库存总容量不足以覆盖正文页数时返回 `NO_IMPOSITION`，不生成任何部分纸张；
+非法库存输入同样保留上次合法拼版。选定序列后逐帖复用与固定容量完全相同
+的物理槽位映射——页码反查、翻面卡片、表格与下载 JSON 指向同一全局纸张
+编号，导出时不另行计算。固定容量旧入口及四种翻转模式的结果保持不变。
 
 ## 拼版规则（系统内只有这一套公式）
 
@@ -71,6 +89,29 @@ docker compose up --build -d
     { "sheetIndex": 3, "signature": 2, "sheetInSignature": 1,
       "frontLeft": "BLANK", "frontRight": 9, "backLeft": 10, "backRight": "BLANK" }
   ],
+  "locations": [{ "page": 1, "signature": 1, "sheetIndex": 1,
+                  "sheetInSignature": 1, "face": "front", "slot": "frontRight" }]
+}
+```
+
+库存拼版导出不带 `signatureSize`，改为携带选定容量序列与耗用库存：
+
+```json
+{
+  "bodyPages": 9,
+  "binding": "left",
+  "flip": "long",
+  "signatureCount": 2,
+  "sheetCount": 3,
+  "blankCount": 3,
+  "sheets": [
+    { "sheetIndex": 1, "signature": 1, "sheetInSignature": 1,
+      "frontLeft": 4, "frontRight": 1, "backLeft": 2, "backRight": 3 },
+    { "sheetIndex": 2, "signature": 2, "sheetInSignature": 1,
+      "frontLeft": "BLANK", "frontRight": 5, "backLeft": 6, "backRight": "BLANK" }
+  ],
+  "signatureSizes": [4, 8],
+  "usedStock": [{ "capacity": 4, "count": 1 }, { "capacity": 8, "count": 1 }],
   "locations": [{ "page": 1, "signature": 1, "sheetIndex": 1,
                   "sheetInSignature": 1, "face": "front", "slot": "frontRight" }]
 }

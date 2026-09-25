@@ -55,10 +55,12 @@ export interface PageLocation {
   slot: Slot;
 }
 
-/** 一次合法拼版的完整结果。表格、反查、卡片预览与 JSON 导出共用此结构。 */
-export interface Imposition {
+/**
+ * 一次合法拼版的公共骨架：表格、反查、卡片预览与 JSON 导出共用此结构。
+ * 固定容量与库存拼版两种流程都产出它，逐帖槽位映射只有一套公式。
+ */
+export interface ImpositionBase {
   bodyPages: number;
-  signatureSize: number;
   binding: Binding;
   flip: Flip;
   /** 签帖总数。 */
@@ -73,13 +75,50 @@ export interface Imposition {
   locations: Record<number, PageLocation>;
 }
 
-/** 拼版输入参数。 */
+/** 固定容量拼版的完整结果（旧入口，字段与序列化形状保持不变）。 */
+export interface Imposition extends ImpositionBase {
+  signatureSize: number;
+}
+
+/** 拼版输入参数（固定容量旧入口）。 */
 export interface ImpositionInput {
   bodyPages: number;
   signatureSize: number;
   binding: Binding;
   flip: Flip;
 }
+
+/** 库存拼版的一种签帖库存：容量 + 可用册数。 */
+export interface InventoryStockItem {
+  /** 签帖容量：4–32 且为 4 的倍数，条目之间互不相同。 */
+  capacity: number;
+  /** 该容量可用的签帖册数：0–8。 */
+  count: number;
+}
+
+/** 库存拼版输入参数。 */
+export interface InventoryImpositionInput {
+  bodyPages: number;
+  binding: Binding;
+  flip: Flip;
+  /** 2–4 种互不相同的签帖库存。 */
+  stock: InventoryStockItem[];
+}
+
+/**
+ * 库存拼版的完整结果。逐帖容量不同，因此记录规划选定的容量序列
+ * （升序，即字典序最小者）与每种容量实际用掉的册数；
+ * 槽位映射、全局纸张编号与反查表和固定容量流程共用同一套生成逻辑。
+ */
+export interface InventoryImposition extends ImpositionBase {
+  /** 逐帖容量序列（升序）。 */
+  signatureSizes: number[];
+  /** 每种容量实际用掉的册数（不超过库存）。 */
+  usedStock: InventoryStockItem[];
+}
+
+/** 两种流程产出的拼版结果并集：展示层与导出层只认这个类型。 */
+export type AnyImposition = Imposition | InventoryImposition;
 
 export const BLANK_CELL: PageCell = { page: null, blank: true };
 

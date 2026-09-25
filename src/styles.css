@@ -101,6 +101,41 @@ header h1 {
   color: var(--ink);
 }
 
+/* 库存拼版：每种签帖一行（容量 + 册数 + 删除）。 */
+.controls fieldset.stock-rows {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stock-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.stock-row label {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stock-row input[type='number'] {
+  width: 90px;
+}
+
+.stock-row button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 button {
   padding: 8px 16px;
   border: 1px solid var(--line);

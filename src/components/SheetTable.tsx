@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Imposition, PageCell, Sheet } from '../imposition/types';
+import type { AnyImposition, PageCell, Sheet } from '../imposition/types';
 import SheetCard from './SheetCard';
 
 function CellValue({ cell }: { cell: PageCell }) {
@@ -39,7 +39,7 @@ function SheetRow({
  * 实体纸张顺序表 + 可翻面卡片预览。
  * 表格与卡片渲染的是同一个 Imposition 映射，不做二次计算。
  */
-export default function SheetTable({ imposition }: { imposition: Imposition }) {
+export default function SheetTable({ imposition }: { imposition: AnyImposition }) {
   const [selected, setSelected] = useState(0);
   const sheet = imposition.sheets[selected] ?? imposition.sheets[0];
 

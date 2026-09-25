@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { locatePage } from '../imposition/imposition';
-import { FACE_LABEL, SLOT_LABEL, type Imposition } from '../imposition/types';
+import { FACE_LABEL, SLOT_LABEL, type AnyImposition } from '../imposition/types';
 
 /** 页码反查：输入正文页码，给出签帖 / 纸张 / 面 / 槽位。 */
-export default function PageLookup({ imposition }: { imposition: Imposition }) {
+export default function PageLookup({ imposition }: { imposition: AnyImposition }) {
   const [raw, setRaw] = useState('1');
 
   const page = Number(raw);
